@@ -14,13 +14,19 @@
 #define MAXPEERS 5
 #define LOG 0 // Change to `1` to enable logging
 
-typedef struct _message
+typedef struct
+{
+  int port;
+  char *name;
+} peer;
+
+typedef struct
 {
   char content[MAXLINE];
   int port;
 } message;
 
-typedef struct _fd_elem
+typedef struct
 {
   int fd;
   int port;
@@ -28,24 +34,18 @@ typedef struct _fd_elem
 
 /* Shared information table */
 char *machine_ip = "127.0.0.1";
-char *user_info_name[MAXPEERS] = {
-    "peer-one",
-    "peer-two",
-    "peer-three",
-    "peer-four",
-    "peer-five"};
-int user_info_port[MAXPEERS] = {
-    5001,
-    5002,
-    5003,
-    5004,
-    5005};
+peer peersgroup[MAXPEERS] = {
+    {5001, "peer-one"},
+    {5002, "peer-two"},
+    {5003, "peer-three"},
+    {5004, "peer-four"},
+    {5005, "peer-five"}};
 
 int port_lookup(char *name)
 {
   for (int i = 0; i < MAXPEERS; i++)
-    if (strcmp(user_info_name[i], name) == 0)
-      return user_info_port[i];
+    if (strcmp(peersgroup[i].name, name) == 0)
+      return peersgroup[i].port;
 
   return -1;
 }
@@ -53,8 +53,8 @@ int port_lookup(char *name)
 char *name_lookup(int port)
 {
   for (int i = 0; i < MAXPEERS; i++)
-    if (user_info_port[i] == port)
-      return user_info_name[i];
+    if (peersgroup[i].port == port)
+      return peersgroup[i].name;
 
   return NULL;
 }
@@ -203,7 +203,7 @@ int main(int argc, char **argv)
       curr_port = ntohs(recvaddr.sin_port);
 
       for (i = 0; i < MAXPEERS; i++)
-        if (curr_port == user_info_port[i])
+        if (curr_port == peersgroup[i].port)
           break;
 
       myfdarr[i].fd = recvfd;
@@ -225,8 +225,9 @@ int main(int argc, char **argv)
       {
         if (LOG)
           printf("\033[3;36mSending to port %d: \033[0m%s\n", prntval.port, prntval.content);
+
         for (i = 0; i < MAXPEERS; i++)
-          if (prntval.port == user_info_port[i])
+          if (prntval.port == peersgroup[i].port)
             break;
 
         if (myfdarr[i].port == -1)
