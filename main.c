@@ -86,7 +86,7 @@ message extract_message(char *text)
 
 int main(int argc, char **argv)
 {
-  int listenfd, recvfd, stdinfd = STDIN_FILENO, maxfd, my_port, opt = 1, i, curr_port, curr_error;
+  int listenfd, recvfd, stdinfd = STDIN_FILENO, maxfd, my_port, opt = 1, i, curr_port, curr_error, fails = 1;
   char buffer1[MAXLINE], buffer2[MAXLINE];
   fd_set rset;
   socklen_t len;
@@ -236,6 +236,9 @@ int main(int argc, char **argv)
           if (connect(myfdarr[i].fd, (struct sockaddr *)&sendaddr, sizeof(sendaddr)) < 0)
           {
             printf("\033[3;33mPeer offline.\033[0m\n");
+            // Print useful tip after every three connection failures
+            if (!(fails++ % 3))
+              printf("\033[3;36mTip: Make sure you actually have someone to talk to...\033[0m\n");
             continue;
           }
           myfdarr[i].port = prntval.port;
