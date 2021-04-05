@@ -50,13 +50,13 @@ int port_lookup(char *name)
   return -1;
 }
 
-char *name_lookup(int port)
+int index_lookup(int port)
 {
   for (int i = 0; i < MAXPEERS; i++)
     if (peersgroup[i].port == port)
-      return peersgroup[i].name;
+      return i;
 
-  return NULL;
+  return -1;
 }
 
 message extract_message(char *text)
@@ -86,7 +86,7 @@ message extract_message(char *text)
 
 int main(int argc, char **argv)
 {
-  int listenfd, recvfd, stdinfd = STDIN_FILENO, maxfd, my_port, opt = 1, i, curr_port, curr_error, fails = 1;
+  int listenfd, recvfd, stdinfd = STDIN_FILENO, maxfd, my_port, opt = 1, i, curr_port, fails = 1;
   char buffer1[MAXLINE], buffer2[MAXLINE];
   fd_set rset;
   socklen_t len;
@@ -166,6 +166,7 @@ int main(int argc, char **argv)
           if (connect(myfdarr[i].fd, (struct sockaddr *)&sendaddr, sizeof(sendaddr)) < 0)
             perror("disconnect");
 
+          printf("\033[3;33mDisconnected from %s.\033[0m\n", peersgroup[i].name);
           sendaddr.sin_family = AF_INET;
           continue;
         }
@@ -184,10 +185,7 @@ int main(int argc, char **argv)
       if (myfdarr[i].port != -1 && FD_ISSET(myfdarr[i].fd, &rset))
       {
         bzero(buffer1, sizeof(buffer1));
-        char *sender_name = name_lookup(myfdarr[i].port);
-        if (!sender_name)
-          sender_name = "(unknown)";
-        printf("\033[0;34m%s\\\033[0m", sender_name);
+        printf("\033[0;34m%s\\\033[0m", peersgroup[i].name);
         read(myfdarr[i].fd, buffer1, sizeof(buffer1));
         puts(buffer1);
         if (LOG)
@@ -201,10 +199,14 @@ int main(int argc, char **argv)
       len = sizeof(recvaddr);
       recvfd = accept(listenfd, (struct sockaddr *)&recvaddr, &len);
       curr_port = ntohs(recvaddr.sin_port);
+      i = index_lookup(curr_port);
 
-      for (i = 0; i < MAXPEERS; i++)
-        if (curr_port == peersgroup[i].port)
-          break;
+      // Ignore connection if port is not in known-list
+      if (i < 0)
+      {
+        printf("\033[3;33mConnection request from port %d ignored.\033[0m\n", curr_port);
+        continue;
+      }
 
       myfdarr[i].fd = recvfd;
       myfdarr[i].port = curr_port;
@@ -226,9 +228,7 @@ int main(int argc, char **argv)
         if (LOG)
           printf("\033[3;36mSending to port %d: \033[0m%s\n", prntval.port, prntval.content);
 
-        for (i = 0; i < MAXPEERS; i++)
-          if (prntval.port == peersgroup[i].port)
-            break;
+        i = index_lookup(prntval.port);
 
         if (myfdarr[i].port == -1)
         {
