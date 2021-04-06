@@ -7,11 +7,13 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/time.h>
 #include <sys/select.h>
 #include <unistd.h>
 
 #define MAXLINE 1024
 #define MAXPEERS 5
+#define TIMEOUT 600
 #define LOG 0 // Change to `1` to enable logging
 
 typedef struct
@@ -30,6 +32,7 @@ typedef struct
 {
   int fd;
   int port;
+  unsigned long last_active_time;
 } fd_elem;
 
 /* Shared information table */
@@ -91,6 +94,7 @@ int main(int argc, char **argv)
   fd_set rset;
   socklen_t len;
   struct sockaddr_in srvraddr, recvaddr, sendaddr;
+  struct timeval instant;
   fd_elem myfdarr[MAXPEERS];
 
   if (argc < 2)
@@ -122,6 +126,7 @@ int main(int argc, char **argv)
     myfdarr[i].fd = socket(AF_INET, SOCK_STREAM, 0);
     setsockopt(myfdarr[i].fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     myfdarr[i].port = -1;
+    myfdarr[i].last_active_time = 0;
 
     // Binding fd to (own) address
     if (bind(myfdarr[i].fd, (struct sockaddr *)&srvraddr, sizeof(srvraddr)) != 0)
@@ -158,7 +163,10 @@ int main(int argc, char **argv)
     for (i = 0; i < MAXPEERS; i++)
       if (myfdarr[i].port != -1)
       {
-        if (recv(myfdarr[i].fd, NULL, 1, MSG_PEEK | MSG_DONTWAIT) == 0)
+        // Check last active time
+        gettimeofday(&instant, NULL);
+
+        if (recv(myfdarr[i].fd, NULL, 1, MSG_PEEK | MSG_DONTWAIT) == 0 || instant.tv_sec - myfdarr[i].last_active_time >= TIMEOUT)
         {
           // Disconnect socket if the peer is lost
           myfdarr[i].port = -1;
@@ -166,7 +174,7 @@ int main(int argc, char **argv)
           if (connect(myfdarr[i].fd, (struct sockaddr *)&sendaddr, sizeof(sendaddr)) < 0)
             perror("disconnect");
 
-          printf("\033[3;33mDisconnected from %s.\033[0m\n", peersgroup[i].name);
+          printf("\033[3;33mDisconnected from %s (timed out or lost).\033[0m\n", peersgroup[i].name);
           sendaddr.sin_family = AF_INET;
           continue;
         }
@@ -190,6 +198,10 @@ int main(int argc, char **argv)
         puts(buffer1);
         if (LOG)
           write(myfdarr[i].fd, buffer1, sizeof(buffer1));
+
+        // Update last active time for socket
+        gettimeofday(&instant, NULL);
+        myfdarr[i].last_active_time = instant.tv_sec;
       }
     }
 
@@ -210,6 +222,10 @@ int main(int argc, char **argv)
 
       myfdarr[i].fd = recvfd;
       myfdarr[i].port = curr_port;
+
+      // Update last active time for socket
+      gettimeofday(&instant, NULL);
+      myfdarr[i].last_active_time = instant.tv_sec;
     }
 
     // Handling console input and sender
@@ -250,6 +266,10 @@ int main(int argc, char **argv)
           read(myfdarr[i].fd, buffer2, sizeof(buffer2));
           puts(buffer2);
         }
+
+        // Update last active time for socket
+        gettimeofday(&instant, NULL);
+        myfdarr[i].last_active_time = instant.tv_sec;
       }
     }
   }
