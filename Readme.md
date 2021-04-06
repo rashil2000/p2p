@@ -55,7 +55,3 @@ At this point, the file descriptor read set is initialized for use in the `selec
 4. Another loop runs on the collection of sockets, basically checking whether they're ready to read from. If yes, the `read()` function is called and the message is displayed on the console.
 5. The listener socket is now checked as to whether it is ready to read from. If yes, the `accept()` function is called and a new connection is saved.
 6. The standard input file descriptor is now checked whether it is ready to read from. If yes, the port of the receiver is extracted from the input. A conditional check runs to see whether we already have a connection to the aforementioned port. If not, the `connect()` function is called and a new connection is saved. The message is then written to the new connection using the `write()` function.
-
-### Known Issues
-
-- Disconnection is a bit janky. Consider two peers, _peer-one_ and _peer-two_. _peer-one_ calls `connect()` to initiate connection and _peer-two_ `accept()`s it. Now if _peer-one_ terminates its process, and then restarts, then _peer-two_ won't be able to talk to him, because the port of the socket which _peer-two_ is using to make the `connect()` call is now randomized for some reason. To start talking again, _peer-one_ needs to send a message to _peer-two_ first, immediately after it is restarted. I feel that the disconnection procedure is not properly releasing the port for reuse, even after using the appropriate **socketopts**.

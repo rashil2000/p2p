@@ -25,15 +25,17 @@ typedef struct
 typedef struct
 {
   char content[MAXLINE];
-  int port;
+  int peer_index;
 } message;
 
 typedef struct
 {
   int fd;
-  int port;
+  int live;
   unsigned long last_active_time;
 } fd_elem;
+
+fd_elem myfdarr[MAXPEERS];
 
 /* Shared information table */
 char *machine_ip = "127.0.0.1";
@@ -44,19 +46,10 @@ peer peersgroup[MAXPEERS] = {
     {5004, "peer-four"},
     {5005, "peer-five"}};
 
-int port_lookup(char *name)
+int index_lookup(char *name)
 {
   for (int i = 0; i < MAXPEERS; i++)
     if (strcmp(peersgroup[i].name, name) == 0)
-      return peersgroup[i].port;
-
-  return -1;
-}
-
-int index_lookup(int port)
-{
-  for (int i = 0; i < MAXPEERS; i++)
-    if (peersgroup[i].port == port)
       return i;
 
   return -1;
@@ -68,14 +61,14 @@ message extract_message(char *text)
   char name[MAXLINE];
   message retval;
   retval.content[0] = 0;
-  retval.port = -1;
+  retval.peer_index = -1;
 
   strcpy(name, text);
   for (; name[i] != 0; i++)
     if (name[i] == '/')
     {
       name[i++] = 0;
-      retval.port = port_lookup(name);
+      retval.peer_index = index_lookup(name);
       break;
     }
 
@@ -89,21 +82,20 @@ message extract_message(char *text)
 
 int main(int argc, char **argv)
 {
-  int listenfd, recvfd, stdinfd = STDIN_FILENO, maxfd, my_port, opt = 1, i, curr_port, fails = 1;
+  int listenfd, recvfd, stdinfd = STDIN_FILENO, maxfd, my_index, opt = 1, i, curr_index, fails = 1;
   char buffer1[MAXLINE], buffer2[MAXLINE];
   fd_set rset;
   socklen_t len;
   struct sockaddr_in srvraddr, recvaddr, sendaddr;
   struct timeval instant;
-  fd_elem myfdarr[MAXPEERS];
 
   if (argc < 2)
   {
     printf("\033[3;33m\nProvide the name of the peer.\033[0m\n");
     exit(EXIT_FAILURE);
   }
-  my_port = port_lookup(argv[1]);
-  if (my_port < 0)
+  my_index = index_lookup(argv[1]);
+  if (my_index == -1)
   {
     printf("\033[3;33m\n%s is not in the peers group. This incident will be reported.\033[0m\n", argv[1]);
     exit(EXIT_FAILURE);
@@ -113,7 +105,7 @@ int main(int argc, char **argv)
   bzero(&srvraddr, sizeof(srvraddr));
   srvraddr.sin_family = AF_INET;
   srvraddr.sin_addr.s_addr = htonl(INADDR_ANY);
-  srvraddr.sin_port = htons(my_port);
+  srvraddr.sin_port = htons(peersgroup[my_index].port);
 
   // Defining sender address
   bzero(&sendaddr, sizeof(sendaddr));
@@ -125,12 +117,8 @@ int main(int argc, char **argv)
   {
     myfdarr[i].fd = socket(AF_INET, SOCK_STREAM, 0);
     setsockopt(myfdarr[i].fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    myfdarr[i].port = -1;
+    myfdarr[i].live = 0;
     myfdarr[i].last_active_time = 0;
-
-    // Binding fd to (own) address
-    if (bind(myfdarr[i].fd, (struct sockaddr *)&srvraddr, sizeof(srvraddr)) != 0)
-      printf("\033[3;33mError binding 'fd %d'\033[0m\n", i);
   }
 
   // Creating listening socket
@@ -161,7 +149,7 @@ int main(int argc, char **argv)
     FD_SET(stdinfd, &rset);
     maxfd = listenfd > stdinfd ? listenfd : stdinfd;
     for (i = 0; i < MAXPEERS; i++)
-      if (myfdarr[i].port != -1)
+      if (myfdarr[i].live)
       {
         // Check last active time
         gettimeofday(&instant, NULL);
@@ -169,7 +157,7 @@ int main(int argc, char **argv)
         if (recv(myfdarr[i].fd, NULL, 1, MSG_PEEK | MSG_DONTWAIT) == 0 || instant.tv_sec - myfdarr[i].last_active_time >= TIMEOUT)
         {
           // Disconnect socket if the peer is lost
-          myfdarr[i].port = -1;
+          myfdarr[i].live = 0;
           sendaddr.sin_family = AF_UNSPEC;
           if (connect(myfdarr[i].fd, (struct sockaddr *)&sendaddr, sizeof(sendaddr)) < 0)
             perror("disconnect");
@@ -190,7 +178,7 @@ int main(int argc, char **argv)
     // Handling receivers
     for (i = 0; i < MAXPEERS; i++)
     {
-      if (myfdarr[i].port != -1 && FD_ISSET(myfdarr[i].fd, &rset))
+      if (myfdarr[i].live && FD_ISSET(myfdarr[i].fd, &rset))
       {
         bzero(buffer1, sizeof(buffer1));
         printf("\033[0;34m%s\\\033[0m", peersgroup[i].name);
@@ -210,22 +198,20 @@ int main(int argc, char **argv)
     {
       len = sizeof(recvaddr);
       recvfd = accept(listenfd, (struct sockaddr *)&recvaddr, &len);
-      curr_port = ntohs(recvaddr.sin_port);
-      i = index_lookup(curr_port);
 
-      // Ignore connection if port is not in known-list
-      if (i < 0)
+      // Read identity of connector
+      if (read(recvfd, &curr_index, sizeof(curr_index)) < 0)
       {
-        printf("\033[3;33mConnection request from port %d ignored.\033[0m\n", curr_port);
+        perror("accept");
         continue;
       }
 
-      myfdarr[i].fd = recvfd;
-      myfdarr[i].port = curr_port;
+      myfdarr[curr_index].fd = recvfd;
+      myfdarr[curr_index].live = 1;
 
       // Update last active time for socket
       gettimeofday(&instant, NULL);
-      myfdarr[i].last_active_time = instant.tv_sec;
+      myfdarr[curr_index].last_active_time = instant.tv_sec;
     }
 
     // Handling console input and sender
@@ -235,21 +221,19 @@ int main(int argc, char **argv)
       read(stdinfd, buffer2, sizeof(buffer2));
       buffer2[strcspn(buffer2, "\n")] = 0; // Newline zapper
       message prntval = extract_message(buffer2);
-      if (prntval.port == -1)
+      if (prntval.peer_index == -1)
         printf("\033[3;33mUnknown peer.\033[0m\n");
-      else if (prntval.port == my_port)
+      else if (prntval.peer_index == my_index)
         printf("\033[0;34m(self)\\\033[0m%s\n", prntval.content);
       else
       {
         if (LOG)
-          printf("\033[3;36mSending to port %d: \033[0m%s\n", prntval.port, prntval.content);
+          printf("\033[3;36mSending to %s: \033[0m%s\n", peersgroup[prntval.peer_index].name, prntval.content);
 
-        i = index_lookup(prntval.port);
-
-        if (myfdarr[i].port == -1)
+        if (!myfdarr[prntval.peer_index].live)
         {
-          sendaddr.sin_port = htons(prntval.port);
-          if (connect(myfdarr[i].fd, (struct sockaddr *)&sendaddr, sizeof(sendaddr)) < 0)
+          sendaddr.sin_port = htons(peersgroup[prntval.peer_index].port);
+          if (connect(myfdarr[prntval.peer_index].fd, (struct sockaddr *)&sendaddr, sizeof(sendaddr)) < 0)
           {
             printf("\033[3;33mPeer offline.\033[0m\n");
             // Print useful tip after every three connection failures
@@ -257,19 +241,21 @@ int main(int argc, char **argv)
               printf("\033[3;36mTip: Make sure you actually have someone to talk to...\033[0m\n");
             continue;
           }
-          myfdarr[i].port = prntval.port;
+          // Reveal my identity to the acceptor
+          write(myfdarr[prntval.peer_index].fd, &my_index, sizeof(my_index));
+          myfdarr[prntval.peer_index].live = 1;
         }
-        write(myfdarr[i].fd, prntval.content, sizeof(prntval.content));
+        write(myfdarr[prntval.peer_index].fd, prntval.content, sizeof(prntval.content));
         if (LOG)
         {
-          printf("\033[3;36mReceived from port %d: \033[0m", prntval.port);
-          read(myfdarr[i].fd, buffer2, sizeof(buffer2));
+          printf("\033[3;36mReceived from %s: \033[0m", peersgroup[prntval.peer_index].name);
+          read(myfdarr[prntval.peer_index].fd, buffer2, sizeof(buffer2));
           puts(buffer2);
         }
 
         // Update last active time for socket
         gettimeofday(&instant, NULL);
-        myfdarr[i].last_active_time = instant.tv_sec;
+        myfdarr[prntval.peer_index].last_active_time = instant.tv_sec;
       }
     }
   }
