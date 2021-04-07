@@ -1,19 +1,19 @@
-#include <arpa/inet.h>
-#include <errno.h>
-#include <netinet/in.h>
+#include <unistd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/select.h>
-#include <unistd.h>
 
 #define MAXLINE 1024
 #define MAXPEERS 5
 #define TIMEOUT 600
+#define BROADCAST_ID 999
 #define LOG 0 // Change to `1` to enable logging
 
 typedef struct
@@ -69,6 +69,8 @@ message extract_message(char *text)
     {
       name[i++] = 0;
       retval.peer_index = index_lookup(name);
+      if (retval.peer_index == -1 && strcmp(name, "[broadcast]") == 0)
+        retval.peer_index = BROADCAST_ID;
       break;
     }
 
@@ -82,7 +84,7 @@ message extract_message(char *text)
 
 int main(int argc, char **argv)
 {
-  int listenfd, recvfd, stdinfd = STDIN_FILENO, maxfd, my_index, opt = 1, i, curr_index, fails = 1;
+  int listenfd, recvfd, stdinfd = STDIN_FILENO, maxfd, my_index, curr_index, fails = 1, opt = 1, i, timed_out, lost_out;
   char buffer1[MAXLINE], buffer2[MAXLINE];
   fd_set rset;
   socklen_t len;
@@ -127,7 +129,10 @@ int main(int argc, char **argv)
 
   // Binding listenfd to server address
   if (bind(listenfd, (struct sockaddr *)&srvraddr, sizeof(srvraddr)) != 0)
-    printf("\033[3;33mError binding 'listenfd'\033[0m\n");
+  {
+    printf("\033[3;33mError binding 'listenfd'. Peer port already in use.\033[0m\n");
+    exit(EXIT_FAILURE);
+  }
 
   // Start listening for incoming connections
   listen(listenfd, MAXPEERS);
@@ -136,11 +141,14 @@ int main(int argc, char **argv)
   FD_ZERO(&rset);
 
   // Print welcome message
-  printf("\n\033[0;35m++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\033[0m\n");
-  printf("\033[0;32m    Hi \033[0m\033[3;32m%s\033[0m\033[0;32m! Welcome to this simple \033[1;32mpeer-to-peer chat\033[0;32m program.\033[0m\n", argv[1]);
-  printf("\033[3;36m   Type the \033[4;36mname\033[0m \033[3;36mof the peer, followed by a \033[4;36m/\033[0m\033[3;36m, and then your message.\033[0m\n");
-  printf("\033[0;34m[Recompile the program after setting the `\033[1;34mLOG\033[0;34m` macro to enable logging.]\033[0m\n");
-  printf("\033[0;35m++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\033[0m\n\n");
+  {
+    printf("\n\033[0;35m++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\033[0m\n");
+    printf("\033[0;32m    Hi \033[0m\033[3;32m%s\033[0m\033[0;32m! Welcome to this simple \033[1;32mpeer-to-peer chat\033[0;32m program.\033[0m\n", argv[1]);
+    printf("\033[3;36m   Type the \033[4;36mname\033[0m \033[3;36mof the peer, followed by a \033[4;36m/\033[0m\033[3;36m, and then your message.\033[0m\n");
+    printf("\033[3;36m     Type \033[4;36m[broadcast]\033[0m \033[3;36minstead of \033[4;36mname\033[0m\033[3;36m to send to all active peers.\033[0m\n");
+    printf("\033[0;34m[Recompile the program after setting the `\033[1;34mLOG\033[0;34m` macro to enable logging.]\033[0m\n");
+    printf("\033[0;35m++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\033[0m\n\n");
+  }
 
   for (;;)
   {
@@ -154,7 +162,9 @@ int main(int argc, char **argv)
         // Check last active time
         gettimeofday(&instant, NULL);
 
-        if (recv(myfdarr[i].fd, NULL, 1, MSG_PEEK | MSG_DONTWAIT) == 0 || instant.tv_sec - myfdarr[i].last_active_time >= TIMEOUT)
+        lost_out = recv(myfdarr[i].fd, NULL, 1, MSG_PEEK | MSG_DONTWAIT) == 0;
+        timed_out = instant.tv_sec - myfdarr[i].last_active_time >= TIMEOUT;
+        if (lost_out || timed_out)
         {
           // Disconnect socket if the peer is lost
           myfdarr[i].live = 0;
@@ -162,7 +172,11 @@ int main(int argc, char **argv)
           if (connect(myfdarr[i].fd, (struct sockaddr *)&sendaddr, sizeof(sendaddr)) < 0)
             perror("disconnect");
 
-          printf("\033[3;33mDisconnected from %s (timed out or lost).\033[0m\n", peersgroup[i].name);
+          if (lost_out)
+            printf("\033[3;33mDisconnected from %s. Peer not responsive.\033[0m\n", peersgroup[i].name);
+          if (timed_out)
+            printf("\033[3;33mDisconnected from %s. Peer inactive for too long.\033[0m\n", peersgroup[i].name);
+
           sendaddr.sin_family = AF_INET;
           continue;
         }
@@ -177,7 +191,6 @@ int main(int argc, char **argv)
 
     // Handling receivers
     for (i = 0; i < MAXPEERS; i++)
-    {
       if (myfdarr[i].live && FD_ISSET(myfdarr[i].fd, &rset))
       {
         bzero(buffer1, sizeof(buffer1));
@@ -191,7 +204,6 @@ int main(int argc, char **argv)
         gettimeofday(&instant, NULL);
         myfdarr[i].last_active_time = instant.tv_sec;
       }
-    }
 
     // Handling connection listener
     if (FD_ISSET(listenfd, &rset))
@@ -221,10 +233,36 @@ int main(int argc, char **argv)
       read(stdinfd, buffer2, sizeof(buffer2));
       buffer2[strcspn(buffer2, "\n")] = 0; // Newline zapper
       message prntval = extract_message(buffer2);
+
       if (prntval.peer_index == -1)
         printf("\033[3;33mUnknown peer.\033[0m\n");
       else if (prntval.peer_index == my_index)
         printf("\033[0;34m(self)\\\033[0m%s\n", prntval.content);
+      else if (prntval.peer_index == BROADCAST_ID)
+      {
+        for (i = 0; i < MAXPEERS; i++)
+          if (myfdarr[i].live)
+          {
+            char temp[MAXLINE] = "(broadcast) ";
+            strcat(temp, prntval.content);
+
+            if (LOG)
+              printf("\033[3;36mSending to %s: \033[0m%s\n", peersgroup[i].name, temp);
+
+            write(myfdarr[i].fd, temp, sizeof(temp));
+
+            if (LOG)
+            {
+              printf("\033[3;36mReceived from %s: \033[0m", peersgroup[i].name);
+              read(myfdarr[i].fd, buffer2, sizeof(buffer2));
+              puts(buffer2);
+            }
+
+            // Update last active time for socket
+            gettimeofday(&instant, NULL);
+            myfdarr[i].last_active_time = instant.tv_sec;
+          }
+      }
       else
       {
         if (LOG)
@@ -245,7 +283,9 @@ int main(int argc, char **argv)
           write(myfdarr[prntval.peer_index].fd, &my_index, sizeof(my_index));
           myfdarr[prntval.peer_index].live = 1;
         }
+
         write(myfdarr[prntval.peer_index].fd, prntval.content, sizeof(prntval.content));
+
         if (LOG)
         {
           printf("\033[3;36mReceived from %s: \033[0m", peersgroup[prntval.peer_index].name);

@@ -18,6 +18,7 @@ This outputs the following:
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
      Hi peer-one! Welcome to this simple peer-to-peer chat program.
    Type the name of the peer, followed by a /, and then your message.
+     Type [broadcast] instead of name to send to all active peers.
 [Recompile the program after setting the `LOG` macro to enable logging.]
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ```
