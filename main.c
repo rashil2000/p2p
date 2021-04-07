@@ -240,12 +240,12 @@ int main(int argc, char **argv)
         printf("\033[0;34m(self)\\\033[0m%s\n", prntval.content);
       else if (prntval.peer_index == BROADCAST_ID)
       {
+        char temp[MAXLINE] = "(broadcast) ";
+        strcat(temp, prntval.content);
+        
         for (i = 0; i < MAXPEERS; i++)
           if (myfdarr[i].live)
           {
-            char temp[MAXLINE] = "(broadcast) ";
-            strcat(temp, prntval.content);
-
             if (LOG)
               printf("\033[3;36mSending to %s: \033[0m%s\n", peersgroup[i].name, temp);
 
