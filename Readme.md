@@ -46,12 +46,12 @@ Machine IP Address: 127.0.0.1
 
 ### Algorithm
 
-The program starts by defining the address structs, one for self and one for peers. It then binds a collection of sockets to the self address, so that their origin can be identified by those who connect with our program. It also binds a listener socket, which listens for incoming connection requests.
+The program starts by defining the address structs, one for self and one for peers. It then initializes a collection of structs of sockets which will be used to read and write messages. A listener socket is bound to the self address, which listens for incoming connection requests.
 
 At this point, the file descriptor read set is initialized for use in the `select()` call. An infinite loop now runs, in which the following take place:
 1. The standard input and TCP listener sockets are inserted into the read set.
-2. The collection of sockets we bound earlier is checked for three things: one, whether a socket has been put in use yet (i.e., its port is a positive integer), two, whether the socket has reached a certain period of inactivity (10 minutes by default), and three, whether the connection on that socket is still alive. If all conditions are true, the socket is inserted into the read set. If the connection has been timed out or lost, the socket is reset.
+2. The collection of sockets we initialized earlier is checked for three things: one, whether a socket has been put in use yet (its `live` value is 1), two, whether the socket has reached a certain period of inactivity (10 minutes by default), and three, whether the connection on that socket is still alive. If all conditions are true, the socket is inserted into the read set. If the connection has been timed out or lost, the socket is reset.
 3. The `select()` function is called with the read set.
 4. Another loop runs on the collection of sockets, basically checking whether they're ready to read from. If yes, the `read()` function is called and the message is displayed on the console.
 5. The listener socket is now checked as to whether it is ready to read from. If yes, the `accept()` function is called and a new connection is saved.
-6. The standard input file descriptor is now checked whether it is ready to read from. If yes, the port of the receiver is extracted from the input. A conditional check runs to see whether we already have a connection to the aforementioned port. If not, the `connect()` function is called and a new connection is saved. The message is then written to the new connection using the `write()` function.
+6. The standard input file descriptor is now checked whether it is ready to read from. If yes, the index of the receiver is extracted from the input. A conditional check runs to see whether we already have a connection to the aforementioned peer index. If not, the `connect()` function is called and a new connection is saved. The message is then written to the new connection using the `write()` function.
