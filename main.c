@@ -3,11 +3,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <sys/time.h>
 #include <sys/select.h>
 
 #define MAXLINE 1024
@@ -158,11 +158,9 @@ int main(int argc, char **argv)
     for (i = 0; i < MAXPEERS; i++)
       if (myfdarr[i].live)
       {
-        // Check last active time
-        gettimeofday(&instant, NULL);
-
+        // Check alive connection and last active time
         lost_out = recv(myfdarr[i].fd, NULL, 1, MSG_PEEK | MSG_DONTWAIT) == 0;
-        timed_out = instant.tv_sec - myfdarr[i].last_active_time >= TIMEOUT;
+        timed_out = time(NULL) - myfdarr[i].last_active_time >= TIMEOUT;
         if (lost_out || timed_out)
         {
           // Disconnect socket if the peer is lost
@@ -200,8 +198,7 @@ int main(int argc, char **argv)
           write(myfdarr[i].fd, buffer1, sizeof(buffer1));
 
         // Update last active time for socket
-        gettimeofday(&instant, NULL);
-        myfdarr[i].last_active_time = instant.tv_sec;
+        time(&myfdarr[i].last_active_time);
       }
 
     // Handling connection listener
@@ -221,8 +218,7 @@ int main(int argc, char **argv)
       myfdarr[curr_index].live = 1;
 
       // Update last active time for socket
-      gettimeofday(&instant, NULL);
-      myfdarr[curr_index].last_active_time = instant.tv_sec;
+      time(&myfdarr[curr_index].last_active_time);
     }
 
     // Handling console input and sender
@@ -258,8 +254,7 @@ int main(int argc, char **argv)
             }
 
             // Update last active time for socket
-            gettimeofday(&instant, NULL);
-            myfdarr[i].last_active_time = instant.tv_sec;
+            time(&myfdarr[i].last_active_time);
           }
       }
       else
@@ -294,8 +289,7 @@ int main(int argc, char **argv)
         }
 
         // Update last active time for socket
-        gettimeofday(&instant, NULL);
-        myfdarr[prntval.peer_index].last_active_time = instant.tv_sec;
+        time(&myfdarr[prntval.peer_index].last_active_time);
       }
     }
   }
