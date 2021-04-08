@@ -1,6 +1,6 @@
 ## Peer to Peer Chat Program
 
-This program enables a number of users (upto `MAXPEERS`) located on the same machine to chat with each other using network sockets. Each user has a pre-defined port and this information is public.
+This program enables a number of users (upto `MAXPEERS`) to chat with each other using network sockets. Each user has a pre-defined port and IP address and this information is public.
 
 ### Running the program
 
