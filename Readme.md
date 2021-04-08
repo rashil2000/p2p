@@ -35,15 +35,13 @@ A sample input/output is shown here:
 
 `MAXPEERS = 5`
 
-Machine IP Address: 127.0.0.1
-
-| Name       | Port  |
-| ---------- | ----: |
-| peer-one   |  5001 |
-| peer-two   |  5002 |
-| peer-three |  5003 |
-| peer-four  |  5004 |
-| peer-five  |  5005 |
+| Port | IP        | Name       |
+| ---: | --------- | ---------- |
+| 5001 | 127.0.0.1 | peer-one   |
+| 5002 | 127.0.0.1 | peer-two   |
+| 5003 | 127.0.0.1 | peer-three |
+| 5004 | 127.0.0.1 | peer-four  |
+| 5005 | 127.0.0.1 | peer-five  |
 
 ### Algorithm
 

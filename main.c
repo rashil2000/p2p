@@ -19,6 +19,7 @@
 typedef struct
 {
   int port;
+  char *ip;
   char *name;
 } peer;
 
@@ -38,18 +39,17 @@ typedef struct
 fd_elem myfdarr[MAXPEERS];
 
 /* Shared information table */
-char *machine_ip = "127.0.0.1";
-peer peersgroup[MAXPEERS] = {
-    {5001, "peer-one"},
-    {5002, "peer-two"},
-    {5003, "peer-three"},
-    {5004, "peer-four"},
-    {5005, "peer-five"}};
+peer user_info[MAXPEERS] = {
+    {5001, "127.0.0.1", "peer-one"},
+    {5002, "127.0.0.1", "peer-two"},
+    {5003, "127.0.0.1", "peer-three"},
+    {5004, "127.0.0.1", "peer-four"},
+    {5005, "127.0.0.1", "peer-five"}};
 
 int index_lookup(char *name)
 {
   for (int i = 0; i < MAXPEERS; i++)
-    if (strcmp(peersgroup[i].name, name) == 0)
+    if (strcmp(user_info[i].name, name) == 0)
       return i;
 
   return -1;
@@ -106,13 +106,12 @@ int main(int argc, char **argv)
   // Defining server address
   bzero(&srvraddr, sizeof(srvraddr));
   srvraddr.sin_family = AF_INET;
-  srvraddr.sin_addr.s_addr = htonl(INADDR_ANY);
-  srvraddr.sin_port = htons(peersgroup[my_index].port);
+  srvraddr.sin_addr.s_addr = inet_addr(user_info[my_index].ip);
+  srvraddr.sin_port = htons(user_info[my_index].port);
 
   // Defining sender address
   bzero(&sendaddr, sizeof(sendaddr));
   sendaddr.sin_family = AF_INET;
-  sendaddr.sin_addr.s_addr = inet_addr(machine_ip);
 
   // Creating sending socket collection
   for (i = 0; i < MAXPEERS; i++)
@@ -173,9 +172,9 @@ int main(int argc, char **argv)
             perror("disconnect");
 
           if (lost_out)
-            printf("\033[3;33mDisconnected from %s. Peer not responsive.\033[0m\n", peersgroup[i].name);
+            printf("\033[3;33mDisconnected from %s. Peer not responsive.\033[0m\n", user_info[i].name);
           if (timed_out)
-            printf("\033[3;33mDisconnected from %s. Peer inactive for too long.\033[0m\n", peersgroup[i].name);
+            printf("\033[3;33mDisconnected from %s. Peer inactive for too long.\033[0m\n", user_info[i].name);
 
           sendaddr.sin_family = AF_INET;
           continue;
@@ -194,7 +193,7 @@ int main(int argc, char **argv)
       if (myfdarr[i].live && FD_ISSET(myfdarr[i].fd, &rset))
       {
         bzero(buffer1, sizeof(buffer1));
-        printf("\033[0;34m%s\\\033[0m", peersgroup[i].name);
+        printf("\033[0;34m%s\\\033[0m", user_info[i].name);
         read(myfdarr[i].fd, buffer1, sizeof(buffer1));
         puts(buffer1);
         if (LOG)
@@ -242,18 +241,18 @@ int main(int argc, char **argv)
       {
         char temp[MAXLINE] = "(broadcast) ";
         strcat(temp, prntval.content);
-        
+
         for (i = 0; i < MAXPEERS; i++)
           if (myfdarr[i].live)
           {
             if (LOG)
-              printf("\033[3;36mSending to %s: \033[0m%s\n", peersgroup[i].name, temp);
+              printf("\033[3;36mSending to %s: \033[0m%s\n", user_info[i].name, temp);
 
             write(myfdarr[i].fd, temp, sizeof(temp));
 
             if (LOG)
             {
-              printf("\033[3;36mReceived from %s: \033[0m", peersgroup[i].name);
+              printf("\033[3;36mReceived from %s: \033[0m", user_info[i].name);
               read(myfdarr[i].fd, buffer2, sizeof(buffer2));
               puts(buffer2);
             }
@@ -266,11 +265,12 @@ int main(int argc, char **argv)
       else
       {
         if (LOG)
-          printf("\033[3;36mSending to %s: \033[0m%s\n", peersgroup[prntval.peer_index].name, prntval.content);
+          printf("\033[3;36mSending to %s: \033[0m%s\n", user_info[prntval.peer_index].name, prntval.content);
 
         if (!myfdarr[prntval.peer_index].live)
         {
-          sendaddr.sin_port = htons(peersgroup[prntval.peer_index].port);
+          sendaddr.sin_port = htons(user_info[prntval.peer_index].port);
+          sendaddr.sin_addr.s_addr = inet_addr(user_info[prntval.peer_index].ip);
           if (connect(myfdarr[prntval.peer_index].fd, (struct sockaddr *)&sendaddr, sizeof(sendaddr)) < 0)
           {
             printf("\033[3;33mPeer offline.\033[0m\n");
@@ -288,7 +288,7 @@ int main(int argc, char **argv)
 
         if (LOG)
         {
-          printf("\033[3;36mReceived from %s: \033[0m", peersgroup[prntval.peer_index].name);
+          printf("\033[3;36mReceived from %s: \033[0m", user_info[prntval.peer_index].name);
           read(myfdarr[prntval.peer_index].fd, buffer2, sizeof(buffer2));
           puts(buffer2);
         }
