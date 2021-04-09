@@ -33,7 +33,7 @@ typedef struct
 {
   int fd;
   int live;
-  unsigned long last_active_time;
+  time_t last_active;
 } fd_elem;
 
 fd_elem myfdarr[MAXPEERS];
@@ -89,7 +89,6 @@ int main(int argc, char **argv)
   fd_set rset;
   socklen_t len;
   struct sockaddr_in srvraddr, recvaddr, sendaddr;
-  struct timeval instant;
 
   if (argc < 2)
   {
@@ -119,7 +118,7 @@ int main(int argc, char **argv)
     myfdarr[i].fd = socket(AF_INET, SOCK_STREAM, 0);
     setsockopt(myfdarr[i].fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     myfdarr[i].live = 0;
-    myfdarr[i].last_active_time = 0;
+    myfdarr[i].last_active = 0;
   }
 
   // Creating listening socket
@@ -160,7 +159,7 @@ int main(int argc, char **argv)
       {
         // Check alive connection and last active time
         lost_out = recv(myfdarr[i].fd, NULL, 1, MSG_PEEK | MSG_DONTWAIT) == 0;
-        timed_out = time(NULL) - myfdarr[i].last_active_time >= TIMEOUT;
+        timed_out = time(NULL) - myfdarr[i].last_active >= TIMEOUT;
         if (lost_out || timed_out)
         {
           // Disconnect socket if the peer is lost
@@ -198,7 +197,7 @@ int main(int argc, char **argv)
           write(myfdarr[i].fd, buffer1, sizeof(buffer1));
 
         // Update last active time for socket
-        time(&myfdarr[i].last_active_time);
+        time(&myfdarr[i].last_active);
       }
 
     // Handling connection listener
@@ -218,7 +217,7 @@ int main(int argc, char **argv)
       myfdarr[curr_index].live = 1;
 
       // Update last active time for socket
-      time(&myfdarr[curr_index].last_active_time);
+      time(&myfdarr[curr_index].last_active);
     }
 
     // Handling console input and sender
@@ -254,7 +253,7 @@ int main(int argc, char **argv)
             }
 
             // Update last active time for socket
-            time(&myfdarr[i].last_active_time);
+            time(&myfdarr[i].last_active);
           }
       }
       else
@@ -289,7 +288,7 @@ int main(int argc, char **argv)
         }
 
         // Update last active time for socket
-        time(&myfdarr[prntval.peer_index].last_active_time);
+        time(&myfdarr[prntval.peer_index].last_active);
       }
     }
   }
